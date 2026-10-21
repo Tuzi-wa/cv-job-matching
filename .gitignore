@@ -1,0 +1,8 @@
+.DS_Store
+*.swp
+__pycache__/
+
+# course data and outputs are not published (the CVs contain personal information)
+data/*.xlsx
+!data/sample_*.xlsx
+results/
