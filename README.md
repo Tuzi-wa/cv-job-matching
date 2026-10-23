@@ -12,15 +12,18 @@ The `match_reason` column in the outputs only lists words that the CV and the jo
 
 ## Result
 
-`code/matching_eval.py` splits the 999 training candidates in two, picks the weights on one half with the same search as `matching_app.py` and evaluates on the other 500 candidates, each ranked against all 1,804 jobs. Strict counts only the labelled job with the highest `match_score`, lenient counts any labelled job (3.4 per candidate on average).
+`code/matching_eval.py` splits the 999 training candidates in two, picks the weights on one half and evaluates on the other 500 candidates, each ranked against all 1,804 jobs. Strict counts only the labelled job with the highest `match_score`, lenient counts any labelled job (3.4 per candidate on average). Besides the submitted features I also tried sentence embeddings from `BAAI/bge-small-en-v1.5` (CV against job post and against job title).
 
-| | R@10 strict | MRR strict | R@10 lenient | MRR lenient |
-|---|---|---|---|---|
-| weighted sum | 0.096 | 0.049 | 0.186 | 0.097 |
-| word TF-IDF only | 0.102 | 0.048 | 0.194 | 0.104 |
-| random | 0.006 | | 0.019 | |
+| features | weights | R@10 strict | MRR strict | R@10 lenient | MRR lenient |
+|---|---|---|---|---|---|
+| word TF-IDF only | - | 0.102 | 0.048 | 0.194 | 0.104 |
+| TF-IDF + LSA (submitted) | search in `matching_app.py` | 0.096 | 0.049 | 0.186 | 0.097 |
+| TF-IDF + LSA | random search on MRR | 0.102 | 0.053 | 0.204 | 0.108 |
+| sentence embeddings | random search on MRR | 0.060 | 0.036 | 0.146 | 0.079 |
+| TF-IDF + LSA + sentence embeddings | random search on MRR | 0.108 | 0.055 | 0.216 | 0.115 |
+| random | | 0.006 | | 0.019 | |
 
-Recall@10 is 10-17 times the random baseline, but the weighted sum does no better than word TF-IDF alone on the held-out candidates. The labels are only loosely related to the text: `code/label_diagnostics.py` shows that TF-IDF similarity ranks on average 27% of the jobs above the labelled one, and `match_score` is almost uncorrelated with it (Spearman 0.05).
+Recall@10 is 10-20 times the random baseline. On their own, the sentence embeddings are clearly worse than TF-IDF. Adding them to the TF-IDF features gives the best numbers, but with 500 evaluation candidates the gain over word TF-IDF alone is within noise (lenient MRR +0.011, 95% bootstrap interval -0.005 to +0.028), and the same holds for the other combinations. The labels are only loosely related to the text: `code/label_diagnostics.py` shows that TF-IDF similarity ranks on average 27% of the jobs above the labelled one, and `match_score` is almost uncorrelated with it (Spearman 0.05).
 
 ## Data
 
@@ -46,7 +49,15 @@ python postgres_vector_search.py --output ../results/Matching_validation_postgre
 
 With the course data, replace the sample files with `Matching_training.xlsx` and `Matching_validation.xlsx`.
 
-`matching_eval.py --embeddings sentence` (or `both`) uses sentence-transformer embeddings instead of (or next to) the TF-IDF features and needs the `sentence-transformers` package.
+The other rows of the table:
+
+```bash
+python matching_eval.py --train ../data/Matching_training.xlsx --tuner random
+python matching_eval.py --train ../data/Matching_training.xlsx --embeddings sentence
+python matching_eval.py --train ../data/Matching_training.xlsx --embeddings both
+```
+
+The sentence embeddings need the `sentence-transformers` package. They are saved in `results/embedding_cache/`, so the model only runs once. On a Mac, `--device cpu` was more reliable than the default.
 
 Demo, from the project root after running the scripts above:
 
