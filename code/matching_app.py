@@ -113,25 +113,10 @@ def summarize_overlap(candidate_text: str, job_title: str, job_text: str, top_k:
         overlap_scores[token] = candidate_counter[token] + job_counter[token] + 2 * title_counter[token]
 
     if not overlap_scores:
-        return "The candidate profile shows a general semantic alignment with the responsibilities and skills described in this role."
+        return "no shared words"
 
     ranked_terms = sorted(overlap_scores.items(), key=lambda item: (-item[1], item[0]))[:top_k]
-    important_terms = [term for term, _ in ranked_terms]
-
-    title_hits = [term for term in important_terms if term in title_counter]
-    if title_hits:
-        supporting_terms = [term for term in important_terms if term not in title_hits][: max(0, top_k - len(title_hits))]
-        return (
-            f"The candidate appears well aligned with the role '{job_title.strip()}' because the CV highlights experience related to "
-            + ", ".join(title_hits + supporting_terms)
-            + "."
-        )
-
-    return (
-        "The match is mainly supported by shared experience and skill signals in the CV and job description, especially around "
-        + ", ".join(important_terms)
-        + "."
-    )
+    return "shared words: " + ", ".join(term for term, _ in ranked_terms)
 
 
 @dataclass

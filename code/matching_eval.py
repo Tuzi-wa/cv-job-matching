@@ -13,7 +13,7 @@ SEED = 20240517
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Evaluate the matching ranker with a leakage-free split.")
+    p = argparse.ArgumentParser(description="Evaluate the ranking on candidates that were not used to tune the weights.")
     p.add_argument("--train", required=True, help="Path to Matching_training.xlsx")
     p.add_argument("--embeddings", choices=["svd", "sentence", "both"], default="svd",
                    help="svd: TF-IDF + TruncatedSVD, sentence: sentence-transformer embeddings, both: use both")

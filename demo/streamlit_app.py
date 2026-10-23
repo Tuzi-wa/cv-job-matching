@@ -131,7 +131,7 @@ def main() -> None:
     st.title("CV / job matching demo")
 
     with st.sidebar:
-        st.header("Data Sources")
+        st.header("Files")
         matching_path = st.text_input("Matching workbook", value=str(DEFAULT_MATCHING_FILE))
         vector_path = st.text_input("Vector workbook", value=str(DEFAULT_VECTOR_FILE))
         pg_vector_path = st.text_input("Postgres vector workbook", value=str(DEFAULT_PG_VECTOR_FILE))
@@ -161,54 +161,48 @@ def main() -> None:
     candidate_ids = sorted(matching["top5"]["CANDIDATE_ID"].dropna().astype(int).unique().tolist())
     selected_candidate = st.sidebar.selectbox("Candidate ID", candidate_ids)
 
-    st.markdown("### Project Overview")
-    st.write(
-        "This demo shows how we match candidate CVs to job posts using three approaches: "
-        "a ranking-based matching engine, a local vector retrieval pipeline, and a PostgreSQL + pgvector search pipeline."
-    )
-
     metric1, metric2, metric3, metric4 = st.columns(4)
     metric1.metric("Candidates", len(matching["candidates"]))
     metric2.metric("Jobs", len(matching["jobs"]))
-    metric3.metric("Matching outputs", len(matching["top20"]))
+    metric3.metric("Top-20 rows", len(matching["top20"]))
     metric4.metric("Selected candidate", int(selected_candidate))
 
     overview_left, overview_mid, overview_right = st.columns(3)
     matching_top = matching["top5"].loc[matching["top5"]["CANDIDATE_ID"] == selected_candidate].copy()
     with overview_left:
-        render_top_pick_card("Matching engine top recommendation", matching_top, "affinity_score")
+        render_top_pick_card("Weighted ranking: top job", matching_top, "affinity_score")
     with overview_mid:
         if vector is None:
-            st.markdown("**Local vector retrieval**")
+            st.markdown("**Local vectors**")
             st.info("Workbook not available.")
         else:
             vector_top_overview = vector["top"].loc[vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-            render_top_pick_card("Local vector top recommendation", vector_top_overview, "vector_similarity_score")
+            render_top_pick_card("Local vectors: top job", vector_top_overview, "vector_similarity_score")
     with overview_right:
         if pg_vector is None:
-            st.markdown("**PostgreSQL vector search**")
+            st.markdown("**pgvector**")
             st.info("Workbook not available.")
         else:
             pg_top_overview = pg_vector["top"].loc[pg_vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-            render_top_pick_card("PostgreSQL top recommendation", pg_top_overview, "vector_similarity_score")
+            render_top_pick_card("pgvector: top job", pg_top_overview, "vector_similarity_score")
 
     st.markdown("---")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
-            "Candidate Top Matches",
-            "Job Title View",
-            "Vector Retrieval",
-            "Postgres Vector",
-            "Compare All",
+            "Candidate",
+            "By job title",
+            "Local vectors",
+            "pgvector",
+            "Compare",
         ]
     )
 
     with tab1:
-        st.subheader(f"Candidate {selected_candidate}: Best Matching Jobs")
+        st.subheader(f"Candidate {selected_candidate}")
         left, right = st.columns([1.2, 1.8])
         with left:
-            st.markdown("**CV Preview**")
+            st.markdown("**CV**")
             st.text_area(
                 "Candidate CV",
                 candidate_preview(matching["candidates"], int(selected_candidate)),
@@ -218,38 +212,35 @@ def main() -> None:
         with right:
             candidate_top5 = matching["top5"].loc[matching["top5"]["CANDIDATE_ID"] == selected_candidate].copy()
             candidate_top20 = matching["top20"].loc[matching["top20"]["CANDIDATE_ID"] == selected_candidate].copy()
-            st.markdown("**Top 5 with reasons**")
+            st.markdown("**Top 5 jobs**")
             render_candidate_match_table(candidate_top5, "affinity_score")
             if not candidate_top5.empty:
                 selected_offer = st.selectbox(
-                    "Choose one recommended job to inspect in detail",
+                    "Job to compare with the CV",
                     candidate_top5["Offer_ID"].astype(str).tolist(),
                 )
-                selected_row = candidate_top5.loc[candidate_top5["Offer_ID"].astype(str) == selected_offer].iloc[0]
                 selected_job_text = jobs_map.get(str(selected_offer), "")
                 selected_cv_text = candidate_preview(matching["candidates"], int(selected_candidate))
                 overlap_terms = extract_overlap_terms(selected_cv_text, selected_job_text)
 
                 detail_left, detail_right = st.columns(2)
                 with detail_left:
-                    st.markdown("**Candidate CV with highlighted overlap**")
+                    st.markdown("**CV, shared words highlighted**")
                     st.markdown(
                         f"<div style='padding:12px;border:1px solid #ddd;border-radius:8px;max-height:420px;overflow:auto;'>{highlight_terms(selected_cv_text, overlap_terms)}</div>",
                         unsafe_allow_html=True,
                     )
                 with detail_right:
-                    st.markdown("**Job requirements / description with highlighted overlap**")
+                    st.markdown("**Job post, shared words highlighted**")
                     st.markdown(
                         f"<div style='padding:12px;border:1px solid #ddd;border-radius:8px;max-height:420px;overflow:auto;'>{highlight_terms(selected_job_text, overlap_terms)}</div>",
                         unsafe_allow_html=True,
                     )
-                st.markdown("**Selected match explanation**")
-                st.write(selected_row["match_reason"])
-            with st.expander("Show top 20 ranking"):
+            with st.expander("Top 20"):
                 render_candidate_match_table(candidate_top20, "affinity_score")
 
     with tab2:
-        st.subheader("Top-5 Matches Sorted by Job Title")
+        st.subheader("Candidates with this job title in their top 5")
         job_titles = sorted(matching["job_sorted"]["Job_title_eng"].dropna().astype(str).unique().tolist())
         selected_title = st.selectbox("Job title", job_titles)
         job_slice = matching["job_sorted"].loc[matching["job_sorted"]["Job_title_eng"] == selected_title].copy()
@@ -257,61 +248,58 @@ def main() -> None:
         st.dataframe(job_slice, use_container_width=True, hide_index=True)
 
     with tab3:
-        st.subheader("Vector Database Retrieval")
+        st.subheader("Local vector search")
         if vector is None:
-            st.warning("Vector workbook not found. Generate Matching_validation_vector_db.xlsx first.")
+            st.warning("Vector workbook not found. Run code/vector_db_matcher.py first.")
         else:
-            st.markdown("**Vector store info**")
+            st.markdown("**Store info**")
             st.dataframe(vector["info"], use_container_width=True, hide_index=True)
             vector_top = vector["top"].loc[vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-            st.markdown(f"**Candidate {selected_candidate}: vector-based top jobs**")
+            st.markdown(f"**Top jobs for candidate {selected_candidate}**")
             render_candidate_match_table(vector_top, "vector_similarity_score")
 
     with tab4:
-        st.subheader("PostgreSQL Vector Search")
+        st.subheader("pgvector search")
         if pg_vector is None:
-            st.warning("PostgreSQL vector workbook not found. Generate Matching_validation_postgres_vector.xlsx first.")
+            st.warning("pgvector workbook not found. Run code/postgres_vector_setup.py and code/postgres_vector_search.py first.")
         else:
-            st.markdown("**PostgreSQL vector store info**")
+            st.markdown("**Store info**")
             st.dataframe(pg_vector["info"], use_container_width=True, hide_index=True)
             pg_top = pg_vector["top"].loc[pg_vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-            st.markdown(f"**Candidate {selected_candidate}: PostgreSQL vector-search top jobs**")
+            st.markdown(f"**Top jobs for candidate {selected_candidate}**")
             render_candidate_match_table(pg_top, "vector_similarity_score")
 
     with tab5:
-        st.subheader("Matching Engine vs Local Vector vs PostgreSQL Vector")
-        st.write(
-            "Top 5 from each method for the same candidate."
-        )
+        st.subheader("Top 5 from each method")
         expl1, expl2, expl3 = st.columns(3)
         with expl1:
-            st.caption("Matching engine: combines keyword overlap, title similarity, and semantic features.")
+            st.caption("Weighted ranking: weighted sum of five TF-IDF and LSA similarities (matching_app.py).")
         with expl2:
-            st.caption("Local vector retrieval: focuses on semantic closeness in the local embedding space.")
+            st.caption("Local vectors: cosine nearest neighbours on the LSA vectors (vector_db_matcher.py).")
         with expl3:
-            st.caption("PostgreSQL vector search: runs nearest-neighbor retrieval through pgvector in the database.")
+            st.caption("pgvector: the same vectors searched in PostgreSQL with an approximate ivfflat index.")
 
         matching_top = matching["top5"].loc[matching["top5"]["CANDIDATE_ID"] == selected_candidate].copy()
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown("**Matching engine**")
+            st.markdown("**Weighted ranking**")
             render_candidate_match_table(matching_top, "affinity_score")
 
         with col2:
             if vector is None:
-                st.warning("Local vector workbook missing.")
+                st.warning("Vector workbook not found.")
             else:
                 vector_top = vector["top"].loc[vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-                st.markdown("**Local vector retrieval**")
+                st.markdown("**Local vectors**")
                 render_candidate_match_table(vector_top, "vector_similarity_score")
 
         with col3:
             if pg_vector is None:
-                st.warning("PostgreSQL vector workbook missing.")
+                st.warning("pgvector workbook not found.")
             else:
                 pg_top = pg_vector["top"].loc[pg_vector["top"]["CANDIDATE_ID"] == selected_candidate].copy()
-                st.markdown("**PostgreSQL vector search**")
+                st.markdown("**pgvector**")
                 render_candidate_match_table(pg_top, "vector_similarity_score")
 
         if vector is not None and pg_vector is not None:
@@ -326,12 +314,12 @@ def main() -> None:
                 & set(pg_top["Offer_ID"].astype(str))
             )
             metric1, metric2, metric3, metric4 = st.columns(4)
-            metric1.metric("Common jobs: Matching + Local", len(overlap_local))
-            metric2.metric("Common jobs: Matching + PostgreSQL", len(overlap_pg))
-            metric3.metric("Common jobs: Local + PostgreSQL", len(overlap_vector_pg))
-            metric4.metric("Common jobs across all 3", len(common_all))
+            metric1.metric("Ranking and local", len(overlap_local))
+            metric2.metric("Ranking and pgvector", len(overlap_pg))
+            metric3.metric("Local and pgvector", len(overlap_vector_pg))
+            metric4.metric("All three", len(common_all))
 
-            st.caption("How many of the top 5 jobs the methods have in common. Not an accuracy measure.")
+            st.caption("Jobs that two or three methods both put in the top 5. This says nothing about accuracy.")
 
             shared_rows = []
             all_jobs = sorted(
@@ -343,12 +331,12 @@ def main() -> None:
                 shared_rows.append(
                     {
                         "Offer_ID": offer_id,
-                        "In Matching": offer_id in set(matching_top["Offer_ID"].astype(str)),
-                        "In Local Vector": offer_id in set(vector_top["Offer_ID"].astype(str)),
-                        "In PostgreSQL Vector": offer_id in set(pg_top["Offer_ID"].astype(str)),
+                        "Weighted ranking": offer_id in set(matching_top["Offer_ID"].astype(str)),
+                        "Local vectors": offer_id in set(vector_top["Offer_ID"].astype(str)),
+                        "pgvector": offer_id in set(pg_top["Offer_ID"].astype(str)),
                     }
                 )
-            st.markdown("**Shared recommendation map**")
+            st.markdown("**Which method returned each job**")
             st.dataframe(pd.DataFrame(shared_rows), use_container_width=True, hide_index=True)
 
 
